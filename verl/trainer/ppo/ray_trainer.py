@@ -349,16 +349,17 @@ class RayPPOTrainer(object):
 
     # TODO: support each role have individual ray_worker_group_cls,
     # i.e., support different backend of different role
-    def __init__(self,
-                 config,
-                 tokenizer,
-                 processor,
-                 role_worker_mapping: dict[Role, WorkerType],
-                 resource_pool_manager: ResourcePoolManager,
-                 ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup,
-                 processor=None,
-                 reward_fn=None,
-                 val_reward_fn=None):
+    def __init__(
+        self,
+        config,
+        tokenizer,
+        role_worker_mapping: dict[Role, WorkerType],
+        resource_pool_manager: ResourcePoolManager,
+        ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup,
+        processor=None,
+        reward_fn=None,
+        val_reward_fn=None,
+    ):
 
         # assert torch.cuda.is_available(), 'cuda must be available on driver'
 
@@ -486,7 +487,7 @@ class RayPPOTrainer(object):
 
         if config.data.get('val_batch_size', None) is not None:
             print(
-                f"WARNING: val_batch_size is deprecated. Validation datasets are sent to inference engines as a whole batch, which will schedule the memory themselves."
+                "WARNING: val_batch_size is deprecated. Validation datasets are sent to inference engines as a whole batch, which will schedule the memory themselves."
             )
 
         print("[validate_config] All configuration checks passed successfully!")

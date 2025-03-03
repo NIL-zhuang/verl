@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from mathruler.grader import extract_boxed_content, grade_answer
+from .mathruler.grader import extract_boxed_content, grade_answer
 
 
 def compute_score(predict_str: str, ground_truth: str) -> float:

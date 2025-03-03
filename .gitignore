@@ -1,3 +1,5 @@
+tasks/
+
 **/*.pt
 **/checkpoints
 **/wget-log
