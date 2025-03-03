@@ -356,6 +356,7 @@ class RayPPOTrainer(object):
                  role_worker_mapping: dict[Role, WorkerType],
                  resource_pool_manager: ResourcePoolManager,
                  ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup,
+                 processor=None,
                  reward_fn=None,
                  val_reward_fn=None):
 
@@ -496,7 +497,7 @@ class RayPPOTrainer(object):
                                          tokenizer=self.tokenizer,
                                          processor=self.processor,
                                          prompt_key=self.config.data.prompt_key,
-                                         image_key=self.config.data.image_key,
+                                         image_key=self.config.data.get('image_key', 'images'),
                                          max_prompt_length=self.config.data.max_prompt_length,
                                          filter_prompts=True,
                                          return_raw_chat=self.config.data.get('return_raw_chat', False),
@@ -520,7 +521,7 @@ class RayPPOTrainer(object):
                                        tokenizer=self.tokenizer,
                                        processor=self.processor,
                                        prompt_key=self.config.data.prompt_key,
-                                       image_key=self.config.data.image_key,
+                                       image_key=self.config.data.get('image_key', 'images'),
                                        max_prompt_length=self.config.data.max_prompt_length,
                                        filter_prompts=True,
                                        return_raw_chat=self.config.data.get('return_raw_chat', False),
@@ -531,15 +532,16 @@ class RayPPOTrainer(object):
             # which will schedule the memory themselves.
             batch_size=len(self.val_dataset),
             num_workers=8,
-            shuffle=True,
+            shuffle=False,
             drop_last=False,
             collate_fn=collate_fn)
 
         assert len(self.train_dataloader) >= 1
-        assert len(self.val_dataloader) >= 1
+        assert len(
+            self.val_dataloader
+        ) == 1, "Validation dataloader must have a single batch, which inference engines will schedule the memory themselves."
 
         print(f'Size of train dataloader: {len(self.train_dataloader)}')
-        print(f'Size of val dataloader: {len(self.val_dataloader)}')
 
         # inject total_training_steps to actor/critic optim_config. This is hacky.
         total_training_steps = len(self.train_dataloader) * self.config.trainer.total_epochs
