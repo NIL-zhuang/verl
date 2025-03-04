@@ -22,7 +22,7 @@ from typing import List, Union, Dict, Any
 
 
 class Tracking(object):
-    supported_backend = ["wandb", "mlflow", "swanlab", "vemlp_wandb", "tensorboard", "console"]
+    supported_backend = ["wandb", "mlflow", "swanlab", "vemlp_wandb", "tensorboard", "console", "hope_tracker"]
 
     def __init__(self, project_name, experiment_name, default_backend: Union[str, List[str]] = 'console', config=None):
         if isinstance(default_backend, str):
@@ -84,6 +84,9 @@ class Tracking(object):
         if 'tensorboard' in default_backend:
             self.logger['tensorboard'] = _TensorboardAdapter()
 
+        if "hope_tracker" in default_backend:
+            self.logger["hope_tracker"] = _HopeTrackerAdapter()
+
         if 'console' in default_backend:
             from verl.utils.logger.aggregate_logger import LocalLogger
             self.console_logger = LocalLogger(print_to_console=True)
@@ -103,6 +106,8 @@ class Tracking(object):
             self.logger['vemlp_wandb'].finish(exit_code=0)
         if 'tensorboard' in self.logger:
             self.logger['tensorboard'].finish()
+        if "hope_tracker" in self.logger:
+            self.logger["hope_tracker"].finish()
 
 
 class _TensorboardAdapter:
@@ -128,6 +133,18 @@ class _MlflowLoggingAdapter:
     def log(self, data, step):
         import mlflow
         mlflow.log_metrics(metrics=data, step=step)
+
+class _HopeTrackerAdapter:
+    def log(self, data, step):
+        from hope import tracking
+
+        for k, v in data.items():
+            tracking.log_metric(k, v, step=step)
+
+    def finish(self):
+        from hope import tracking
+
+        tracking.safe_close()
 
 
 def _compute_mlflow_params_from_objects(params) -> Dict[str, Any]:
