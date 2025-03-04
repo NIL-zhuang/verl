@@ -3,10 +3,9 @@ set -x
 export VLLM_ATTENTION_BACKEND=XFORMERS
 
 python3 -m verl.trainer.main_ppo \
-    algorithm.adv_estimator=grpo \
     data.train_files=$HOME/data/geo3k/train.parquet \
     data.val_files=$HOME/data/geo3k/test.parquet \
-    data.train_batch_size=512 \
+    data.train_batch_size=128 \
     data.max_prompt_length=1536 \
     data.max_response_length=1536 \
     data.image_key=images \
@@ -26,19 +25,12 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.4 \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
-    actor_rollout_ref.rollout.enforce_eager=False \
+    actor_rollout_ref.rollout.enforce_eager=True \
     actor_rollout_ref.rollout.free_cache_engine=False \
-    actor_rollout_ref.rollout.n=5 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=16 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
-    critic.optim.lr=1e-5 \
-    critic.model.use_remove_padding=True \
-    critic.model.path=Qwen/Qwen2-VL-2B-Instruct \
-    critic.model.enable_gradient_checkpointing=False \
-    critic.ppo_micro_batch_size_per_gpu=4 \
-    critic.model.fsdp_config.param_offload=False \
-    critic.model.fsdp_config.optimizer_offload=False \
     algorithm.kl_ctrl.kl_coef=0.001 \
+    algorithm.adv_estimator=grpo \
     trainer.critic_warmup=0 \
     trainer.logger=['console'] \
     trainer.project_name='verl_example_geo3k' \
