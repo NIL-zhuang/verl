@@ -16,7 +16,6 @@ from verl import DataProto
 from verl.utils.reward_score import RewardFunctionWrapper
 import torch
 from collections import defaultdict
-import numpy as np
 
 class NaiveRewardManager:
     """The reward manager.
@@ -47,17 +46,16 @@ class NaiveRewardManager:
 
             prompt_length = prompt_ids.shape[-1]
 
-            # valid_prompt_length = data_item.batch['attention_mask'][:prompt_length].sum()
-            # valid_prompt_ids = prompt_ids[-valid_prompt_length:]
+            valid_prompt_length = data_item.batch['attention_mask'][:prompt_length].sum()
+            valid_prompt_ids = prompt_ids[-valid_prompt_length:]
 
             response_ids = data_item.batch['responses']
             valid_response_length = data_item.batch['attention_mask'][prompt_length:].sum()
             valid_response_ids = response_ids[:valid_response_length]
 
             # decode
-            # sequences = torch.cat((valid_prompt_ids, valid_response_ids))
-            # sequences_str = self.tokenizer.decode(sequences)
-            solution_str = self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
+            prompt_str = self.tokenizer.decode(valid_prompt_ids)
+            response_str = self.tokenizer.decode(valid_response_ids)
 
             ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
 
@@ -67,7 +65,7 @@ class NaiveRewardManager:
 
             score, reward_metric = self.compute_score(
                 data_source=data_source,
-                solution_str=solution_str,
+                solution_str=response_str,
                 ground_truth=ground_truth,
                 extra_info=extra_info,
             )
@@ -83,14 +81,9 @@ class NaiveRewardManager:
 
             if already_print_data_sources[data_source] < self.num_examine:
                 already_print_data_sources[data_source] += 1
-                # print(sequences_str)
-                print(solution_str)
+                print("[prompt]", prompt_str)
+                print("[response]", response_str)
+                print("[ground_truth]", ground_truth)
+                print("[score]", score)
 
-        reward_metric = dict()
-        for k, v in reward_metrics.items():
-            reward_metric[k] = np.mean(v)
-
-        if return_metric:
-            return reward_tensor, reward_metric
-        else:
-            return reward_tensor
+        return reward_tensor
