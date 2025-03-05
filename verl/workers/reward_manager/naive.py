@@ -13,9 +13,10 @@
 # limitations under the License.
 
 from verl import DataProto
-from verl.utils.reward_score import _default_compute_score
+from verl.utils.reward_score import RewardFunctionWrapper
 import torch
-
+from collections import defaultdict
+import numpy as np
 
 class NaiveRewardManager:
     """The reward manager.
@@ -24,9 +25,10 @@ class NaiveRewardManager:
     def __init__(self, tokenizer, num_examine, compute_score=None) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
-        self.compute_score = compute_score or _default_compute_score
+        # self.compute_score = compute_score or _default_compute_score
+        self.compute_score = RewardFunctionWrapper(compute_score)
 
-    def __call__(self, data: DataProto):
+    def __call__(self, data: DataProto, return_metric: bool = False, correctness_only: bool = True):
         """We will expand this function gradually based on the available datasets"""
 
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
@@ -34,6 +36,7 @@ class NaiveRewardManager:
             return data.batch['rm_scores']
 
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
+        reward_metrics = defaultdict(list)
 
         already_print_data_sources = {}
 
@@ -44,16 +47,17 @@ class NaiveRewardManager:
 
             prompt_length = prompt_ids.shape[-1]
 
-            valid_prompt_length = data_item.batch['attention_mask'][:prompt_length].sum()
-            valid_prompt_ids = prompt_ids[-valid_prompt_length:]
+            # valid_prompt_length = data_item.batch['attention_mask'][:prompt_length].sum()
+            # valid_prompt_ids = prompt_ids[-valid_prompt_length:]
 
             response_ids = data_item.batch['responses']
             valid_response_length = data_item.batch['attention_mask'][prompt_length:].sum()
             valid_response_ids = response_ids[:valid_response_length]
 
             # decode
-            sequences = torch.cat((valid_prompt_ids, valid_response_ids))
-            sequences_str = self.tokenizer.decode(sequences)
+            # sequences = torch.cat((valid_prompt_ids, valid_response_ids))
+            # sequences_str = self.tokenizer.decode(sequences)
+            solution_str = self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
 
             ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
 
@@ -61,19 +65,32 @@ class NaiveRewardManager:
 
             extra_info = data_item.non_tensor_batch.get('extra_info', None)
 
-            score = self.compute_score(
+            score, reward_metric = self.compute_score(
                 data_source=data_source,
-                solution_str=sequences_str,
+                solution_str=solution_str,
                 ground_truth=ground_truth,
                 extra_info=extra_info,
             )
+            if correctness_only:
+                score = reward_metric["reward/correctness"]
             reward_tensor[i, valid_response_length - 1] = score
+
+            for k, v in reward_metric.items():
+                reward_metrics[k].append(v)
 
             if data_source not in already_print_data_sources:
                 already_print_data_sources[data_source] = 0
 
             if already_print_data_sources[data_source] < self.num_examine:
                 already_print_data_sources[data_source] += 1
-                print(sequences_str)
+                # print(sequences_str)
+                print(solution_str)
 
-        return reward_tensor
+        reward_metric = dict()
+        for k, v in reward_metrics.items():
+            reward_metric[k] = np.mean(v)
+
+        if return_metric:
+            return reward_tensor, reward_metric
+        else:
+            return reward_tensor

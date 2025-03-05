@@ -22,7 +22,7 @@ from typing import List, Union, Dict, Any
 
 
 class Tracking(object):
-    supported_backend = ["wandb", "mlflow", "swanlab", "vemlp_wandb", "tensorboard", "console", "hope_tracker"]
+    supported_backend = ["wandb", "mlflow", "swanlab", "vemlp_wandb", "tensorboard", "console", "hope_tracking"]
 
     def __init__(self, project_name, experiment_name, default_backend: Union[str, List[str]] = 'console', config=None):
         if isinstance(default_backend, str):
@@ -84,8 +84,8 @@ class Tracking(object):
         if 'tensorboard' in default_backend:
             self.logger['tensorboard'] = _TensorboardAdapter()
 
-        if "hope_tracker" in default_backend:
-            self.logger["hope_tracker"] = _HopeTrackerAdapter()
+        if "hope_tracking" in default_backend:
+            self.logger["hope_tracking"] = _HopeTrackingAdapter()
 
         if 'console' in default_backend:
             from verl.utils.logger.aggregate_logger import LocalLogger
@@ -134,7 +134,7 @@ class _MlflowLoggingAdapter:
         import mlflow
         mlflow.log_metrics(metrics=data, step=step)
 
-class _HopeTrackerAdapter:
+class _HopeTrackingAdapter:
     def log(self, data, step):
         from hope import tracking
 

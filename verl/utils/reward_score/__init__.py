@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # from . import gsm8k, math, prime_math, prime_code
+from typing import Callable, Optional, Dict
 
 
 def _default_compute_score(data_source, solution_str, ground_truth, extra_info=None):
@@ -40,3 +41,26 @@ def _default_compute_score(data_source, solution_str, ground_truth, extra_info=N
         return float(res)
     else:
         return float(res[0])
+
+class RewardFunctionWrapper:
+    def __init__(self, compute_score: Optional[Dict[str, Callable] | Callable] = None):
+        from . import format_reward
+
+        if compute_score is None:
+            self.compute_score = _default_compute_score
+        self.format_score = format_reward.compute_score
+
+    def __call__(self, data_source, solution_str, ground_truth, extra_info: dict = None):
+        score_reward = self.compute_score(data_source, solution_str, ground_truth, extra_info)
+        format_reward = self.format_score(data_source, solution_str, extra_info)
+        reward_metric = {"reward/correctness": score_reward, "reward/format": format_reward}
+
+        # 只有答案正确才给格式奖励，否则不给
+        # if score_reward > 0:
+        #     score = score_reward + format_reward
+        # else:
+        #     score = score_reward
+
+        score = score_reward + format_reward
+
+        return score, reward_metric

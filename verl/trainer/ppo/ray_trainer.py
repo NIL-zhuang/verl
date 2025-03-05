@@ -18,6 +18,8 @@ This trainer supports model-agonistic model initialization with huggingface
 
 import os
 import uuid
+import json
+from datetime import datetime
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -485,7 +487,7 @@ class RayPPOTrainer(object):
 
         if config.data.get('val_batch_size', None) is not None:
             print(
-                f"WARNING: val_batch_size is deprecated. Validation datasets are sent to inference engines as a whole batch, which will schedule the memory themselves."
+                "WARNING: val_batch_size is deprecated. Validation datasets are sent to inference engines as a whole batch, which will schedule the memory themselves."
             )
 
         print("[validate_config] All configuration checks passed successfully!")
@@ -555,6 +557,41 @@ class RayPPOTrainer(object):
         with open_dict(self.config):
             self.config.actor_rollout_ref.actor.optim.total_training_steps = total_training_steps
             self.config.critic.optim.total_training_steps = total_training_steps
+
+    def _maybe_log_val_generations_to_hope_tracking(self, inputs, outputs, scores):
+        # 把输出 log 到万象的“输入输出”栏目中
+        generations_to_log = self.config.trainer.val_generations_to_log_to_hope_tracking
+        if not generations_to_log:
+            return
+        if generations_to_log and "hope_tracking" not in self.config.trainer.logger:
+            print("WARNING: `val_generations_to_log_to_hope_tracking` is set, but no hope-tracking logger is found.")
+            return
+
+        from hope import tracking
+        import numpy as np
+
+        samples = list(zip(inputs, outputs, scores))
+        samples.sort(key=lambda x: x[0])  # sort by input text
+        rng = np.random.RandomState(42)
+        rng.shuffle(samples)
+        samples = samples[:generations_to_log]
+
+        results = []
+        for sample in samples:
+            # ?目前应该还用不到 HDFSHandler，先这样吧
+            input_data, output_data, score = sample
+            cur_sample = {"input": input_data, "output": output_data, "score": score}
+            results.append(json.dumps(cur_sample))
+
+        output_dir = os.path.join(self.config.trainer.default_local_dir, "validation_outputs")
+        os.makedirs(output_dir, exist_ok=True)
+        timestamp = datetime.now().strftime(r"%Y%m%d%H%M")
+        output_fpath = os.path.join(output_dir, f"training_step{self.global_steps}_{timestamp}.jsonl")
+        with open(output_fpath, "w+", encoding="utf-8") as f:
+            info = "\n".join(results)
+            f.write(info)
+
+        tracking.set_output(f"validation_step{self.global_steps}", output_fpath)
 
     def _maybe_log_val_generations_to_wandb(self, inputs, outputs, scores):
         """Log a table of validation samples to wandb"""
@@ -671,6 +708,9 @@ class RayPPOTrainer(object):
             data_source_lst.append(test_batch.non_tensor_batch.get('data_source', ['unknown'] * reward_tensor.shape[0]))
 
         self._maybe_log_val_generations_to_wandb(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
+        self._maybe_log_val_generations_to_hope_tracking(
+            inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores
+        )
 
         reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (batch_size,)
         data_sources = np.concatenate(data_source_lst, axis=0)
@@ -942,6 +982,8 @@ class RayPPOTrainer(object):
                     self._balance_batch(batch, metrics=metrics)
 
                     # compute global_valid tokens
+                    # TODO: 检查 GRPO
+                    # ? 注意这个地方，check 一下 GRPO 的 loss 是在 token 上还是在 sequence 上，以及对应的计算方式
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
 
                     # recompute old_log_probs
@@ -971,8 +1013,11 @@ class RayPPOTrainer(object):
                             batch = batch.union(reward_tensor)
 
                         # we combine with rule-based rm
-                        reward_tensor = self.reward_fn(batch)
+                        reward_tensor, reward_metrics = self.reward_fn(
+                            batch, return_metric=True, correctness_only=False
+                        )
                         batch.batch['token_level_scores'] = reward_tensor
+                        metrics.update(reward_metrics)
 
                         # compute rewards. apply_kl_penalty if available
                         if not self.config.actor_rollout_ref.actor.get('use_kl_loss', False):
@@ -1033,8 +1078,11 @@ class RayPPOTrainer(object):
                         val_metrics = self._validate()
                         pprint(f'Final validation metrics: {val_metrics}')
                         logger.log(data=val_metrics, step=self.global_steps)
-                    if self.config.trainer.save_freq > 0 and \
-                            (self.global_steps - 1) % self.config.trainer.save_freq != 0:
+                    if (
+                        self.config.trainer.save_freq == 0  # save the last checkpoint
+                        or self.config.trainer.save_freq > 0
+                        and (self.global_steps - 1) % self.config.trainer.save_freq != 0
+                    ):
                         with _timer('save_checkpoint', timing_raw):
                             self._save_checkpoint()
                     return
