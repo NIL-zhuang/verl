@@ -15,6 +15,7 @@
 from verl import DataProto
 from verl.utils.reward_score import RewardFunctionWrapper
 import torch
+import numpy as np
 from collections import defaultdict
 
 class NaiveRewardManager:
@@ -86,4 +87,10 @@ class NaiveRewardManager:
                 print("[ground_truth]", ground_truth)
                 print("[score]", score)
 
-        return reward_tensor
+        if return_metric:
+            ensembled_reward_metric = dict()
+            for k, v in reward_metrics.items():
+                ensembled_reward_metric[k] = np.mean(v)
+            return reward_tensor, ensembled_reward_metric
+        else:
+            return reward_tensor
