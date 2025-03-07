@@ -57,7 +57,6 @@ def process_image(
     max_pixels: int = 2048 * 2048,
     min_pixels: int = 512 * 512,
 ):
-    # modify to suit https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py
     if isinstance(img_ele, dict):
         if "bytes" in img_ele and len(img_ele["bytes"]) > 0:
             image = Image.open(BytesIO(img_ele["bytes"]))
@@ -106,6 +105,7 @@ class RLHFDataset(Dataset):
         chat_template_func=None,
         return_raw_chat=False,
         truncation="error",
+        filter_overlong_prompts=False,
     ):
         if not isinstance(parquet_files, (List, ListConfig)):
             parquet_files = [parquet_files]
@@ -127,6 +127,7 @@ class RLHFDataset(Dataset):
         self.return_raw_chat = return_raw_chat
         self.chat_template_func = chat_template_func
         self.truncation = truncation
+        self.filter_overlong_prompts = filter_overlong_prompts
 
         # whether to store the dataset in state_dict()
         # default not store
@@ -171,9 +172,9 @@ class RLHFDataset(Dataset):
                 )
 
         data = {
-            self.prompt_with_chat_template_key: prompt_with_chat_template,
-            self.raw_prompt_key: raw_prompt,
-            self.image_grid_thw_key: image_grid_thw if self.image_key in sample else None,
+            "prompt_with_chat_template": prompt_with_chat_template,
+            "raw_prompt": raw_prompt,
+            "image_grid_thw": image_grid_thw if self.image_key in sample else None,
         }
         data.update(row_dict)
         df = pd.Series(data)
@@ -187,15 +188,14 @@ class RLHFDataset(Dataset):
             dataframes.append(dataframe)
         self.dataframe = pd.concat(dataframes)
 
-        print(f"original dataset len: {len(self.dataframe)}")
+        print(f"dataset len: {len(self.dataframe)}")
 
         new_df = self.dataframe.apply(lambda x: self._preprocess_fn(x), axis=1)
         self.dataframe = pd.concat([new_df, self.dataframe], axis=1)
 
         self.dataframe = self.dataframe[
             self.dataframe.apply(
-                lambda doc: len(self.tokenizer.tokenize(doc[self.prompt_with_chat_template_key]))
-                <= self.max_prompt_length,
+                lambda doc: len(self.tokenizer.tokenize(doc["prompt_with_chat_template"])) <= self.max_prompt_length,
                 axis=1,
             )
         ]
@@ -219,10 +219,11 @@ class RLHFDataset(Dataset):
         """
 
         row_dict = self.dataframe.iloc[item].to_dict()
+
         chat = row_dict.pop(self.prompt_key)
-        prompt_with_chat_template = row_dict.pop(self.prompt_with_chat_template_key)
-        raw_prompt = row_dict.pop(self.raw_prompt_key)
-        image_grid_thw = row_dict.pop(self.image_grid_thw_key)
+        prompt_with_chat_template = row_dict.pop("prompt_with_chat_template")
+        raw_prompt = row_dict.pop("raw_prompt")
+        image_grid_thw = row_dict.pop("image_grid_thw")
         input_ids, attention_mask = verl_F.tokenize_and_postprocess_data(
             prompt=prompt_with_chat_template,
             tokenizer=self.tokenizer,

@@ -19,10 +19,11 @@ from torch.utils.data import DataLoader
 def get_gsm8k_data():
     # prepare test dataset
     url = "https://github.com/eric-haibin-lin/verl-data/raw/refs/heads/main/gsm8k/train.parquet"
-    local_folder = os.path.expanduser('~/verl-data/gsm8k/')
-    local_path = os.path.join(local_folder, 'train.parquet')
+    local_folder = os.path.expanduser("~/verl-data/gsm8k/")
+    local_path = os.path.join(local_folder, "train.parquet")
     os.makedirs(local_folder, exist_ok=True)
     return local_path
+
 
 def get_geo3k_data():
     url = "https://github.com/NIL-zhuang/verl_data/blob/main/geo3k/test.parquet"
@@ -32,12 +33,14 @@ def get_geo3k_data():
 
     return local_path
 
+
 def test_rl_dataset():
     from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
     from verl.utils import hf_tokenizer
-    tokenizer = hf_tokenizer('deepseek-ai/deepseek-coder-1.3b-instruct')
+
+    tokenizer = hf_tokenizer("deepseek-ai/deepseek-coder-1.3b-instruct")
     local_path = get_gsm8k_data()
-    dataset = RLHFDataset(parquet_files=local_path, tokenizer=tokenizer, prompt_key='prompt', max_prompt_length=256)
+    dataset = RLHFDataset(parquet_files=local_path, tokenizer=tokenizer, prompt_key="prompt", max_prompt_length=256)
 
     dataloader = DataLoader(dataset=dataset, batch_size=16, shuffle=True, drop_last=True, collate_fn=collate_fn)
 
@@ -56,10 +59,11 @@ def test_rl_dataset():
 
     data_proto = DataProto.from_dict(tensors=tensors, non_tensors=non_tensors)
 
-    data = dataset[0]['input_ids']
+    data = dataset[0]["input_ids"]
     output = tokenizer.batch_decode([data])[0]
-    print(f'type: type{output}')
-    print(f'\n\noutput: {output}')
+    print(f"type: type{output}")
+    print(f"\n\noutput: {output}")
+
 
 def test_multimodal_rl_dataset():
     """
@@ -104,7 +108,3 @@ def test_multimodal_rl_dataset():
     output = tokenizer.batch_decode([data])[0]
     print(f"type: type{output}")
     print(f"\n\noutput: {output}")
-
-
-if __name__ == "__main__":
-    test_multimodal_rl_dataset()
