@@ -64,7 +64,6 @@ def test_rl_dataset():
     print(f"type: type{output}")
     print(f"\n\noutput: {output}")
 
-
 def test_multimodal_rl_dataset():
     """
     Avoid multimodal data that passes length filtering with <image> placeholder
@@ -78,7 +77,7 @@ def test_multimodal_rl_dataset():
     from verl.utils import hf_tokenizer, hf_processor
     from verl import DataProto
 
-    tokenizer_path = "Qwen/Qwen2.5-VL-3B-Instruct"
+    tokenizer_path = 'Qwen/Qwen2.5-VL-3B-Instruct'
     tokenizer = hf_tokenizer(tokenizer_path)
     processor = hf_processor(tokenizer_path)
     local_path = get_geo3k_data()
@@ -86,10 +85,11 @@ def test_multimodal_rl_dataset():
         parquet_files=[local_path],
         tokenizer=tokenizer,
         processor=processor,
-        prompt_key="prompt",
-        image_key="images",
+        prompt_key='prompt',
+        image_key='images',
         max_prompt_length=500,
         filter_prompts=True,
+        filter_overlong_prompts=True,
     )
     dataloader = DataLoader(dataset=dataset, batch_size=16, collate_fn=collate_fn)
     a = next(iter(dataloader))
@@ -104,7 +104,7 @@ def test_multimodal_rl_dataset():
 
     data_proto = DataProto.from_dict(tensors=tensors, non_tensors=non_tensors)
 
-    data = dataset[0]["input_ids"]
+    data = dataset[0]['input_ids']
     output = tokenizer.batch_decode([data])[0]
-    print(f"type: type{output}")
-    print(f"\n\noutput: {output}")
+    print(f'type: type{output}')
+    print(f'\n\noutput: {output}')

@@ -52,20 +52,21 @@ def collate_fn(data_list: list[dict]) -> dict:
     return {**tensors, **non_tensors}
 
 
-def process_image(
-    img_ele: Union[dict, str, Image.Image],
-    max_pixels: int = 2048 * 2048,
-    min_pixels: int = 512 * 512,
-):
+def process_image(img_ele: Union[dict, str, Image.Image],
+                  max_pixels: int = 2048 * 2048,
+                  min_pixels: int = 512 * 512):
+    import math
+    from io import BytesIO
     if isinstance(img_ele, dict):
-        if "bytes" in img_ele and len(img_ele["bytes"]) > 0:
-            image = Image.open(BytesIO(img_ele["bytes"]))
-        elif "path" in img_ele and len(img_ele["path"]) > 0:
-            image = Image.open(img_ele["path"])
+        if 'bytes' in img_ele and len(img_ele['bytes']) > 0:
+            image = Image.open(BytesIO(img_ele['bytes']))
+        elif 'path' in img_ele and len(img_ele['path']) > 0:
+            image = Image.open(img_ele['path'])
     elif isinstance(img_ele, Image.Image):
         image = img_ele
-    elif img_ele.startswith("data:image") and "base64" in img_ele:
-        _, base64_data = img_ele.split("base64", 1)
+    elif img_ele.startswith('data:image') and 'base64' in img_ele:
+        import base64
+        _, base64_data = img_ele.split('base64', 1)
         data = base64.b64decode(base64_data)
         image = Image.open(BytesIO(data))
     else:
@@ -145,40 +146,37 @@ class RLHFDataset(Dataset):
     def _preprocess_fn(self, sample):
         chat = sample[self.prompt_key]
         prompt_with_chat_template = self.tokenizer.apply_chat_template(chat, add_generation_prompt=True, tokenize=False)
-        raw_prompt = prompt_with_chat_template
         row_dict = dict()
         if self.image_key in sample:
-            raw_prompt = prompt_with_chat_template.replace("<image>", "<|vision_start|><|image_pad|><|vision_end|>")
-            row_dict["multi_modal_data"] = {"image": [process_image(image) for image in sample[self.image_key]]}
-            image_inputs = self.processor.image_processor(row_dict["multi_modal_data"]["image"], return_tensors="pt")
-            image_grid_thw = image_inputs["image_grid_thw"]
-            row_dict["multi_modal_inputs"] = {key: val for key, val in image_inputs.items()}
+            raw_prompt = prompt_with_chat_template.replace('<image>', '<|vision_start|><|image_pad|><|vision_end|>')
+            row_dict['multi_modal_data'] = {'image': [process_image(image) for image in sample[self.image_key]]}
+            image_inputs = self.processor.image_processor(row_dict['multi_modal_data']['image'], return_tensors='pt')
+            image_grid_thw = image_inputs['image_grid_thw']
+            row_dict['image_grid_thw'] = image_grid_thw
+            row_dict['multi_modal_inputs'] = {key: val for key, val in image_inputs.items()}
 
             if image_grid_thw is not None:
                 merge_length = self.processor.image_processor.merge_size**2
                 index = 0
-                while "<image>" in prompt_with_chat_template:
+                while '<image>' in prompt_with_chat_template:
                     prompt_with_chat_template = prompt_with_chat_template.replace(
-                        "<image>",
-                        "<|vision_start|>"
-                        + "<|placeholder|>" * (image_grid_thw[index].prod() // merge_length)
-                        + "<|vision_end|>",
+                        '<image>',
+                        '<|vision_start|>'
+                        + '<|placeholder|>' * (image_grid_thw[index].prod() // merge_length)
+                        + '<|vision_end|>',
                         1,
                     )
                     index += 1
 
                 prompt_with_chat_template = prompt_with_chat_template.replace(
-                    "<|placeholder|>", self.processor.image_token
+                    '<|placeholder|>', self.processor.image_token
                 )
+        else:
+            raw_prompt = prompt_with_chat_template
 
-        data = {
-            "prompt_with_chat_template": prompt_with_chat_template,
-            "raw_prompt": raw_prompt,
-            "image_grid_thw": image_grid_thw if self.image_key in sample else None,
-        }
-        data.update(row_dict)
-        df = pd.Series(data)
-        return df
+        row_dict['prompt_with_chat_template'] = prompt_with_chat_template
+        row_dict['raw_prompt'] = raw_prompt
+        return row_dict
 
     def _read_files_and_tokenize(self):
         dataframes = []
@@ -188,18 +186,19 @@ class RLHFDataset(Dataset):
             dataframes.append(dataframe)
         self.dataframe = pd.concat(dataframes)
 
-        print(f"dataset len: {len(self.dataframe)}")
+        print(f'dataset len: {len(self.dataframe)}')
 
-        new_df = self.dataframe.apply(lambda x: self._preprocess_fn(x), axis=1)
-        self.dataframe = pd.concat([new_df, self.dataframe], axis=1)
+        if self.filter_overlong_prompts:
+            from tqdm.auto import tqdm
 
-        self.dataframe = self.dataframe[
-            self.dataframe.apply(
-                lambda doc: len(self.tokenizer.tokenize(doc["prompt_with_chat_template"])) <= self.max_prompt_length,
-                axis=1,
-            )
-        ]
-        print(f"filter dataset len: {len(self.dataframe)}")
+            tqdm.pandas(desc='Filtering overlong prompts')
+            preprocessed = self.dataframe.progress_apply(lambda x: self._preprocess_fn(x), axis=1)
+            self.dataframe = self.dataframe[
+                preprocessed.apply(
+                    lambda doc: len(self.tokenizer.tokenize(doc['prompt_with_chat_template'])) <= self.max_prompt_length
+                )
+            ]
+            print(f'filter dataset len: {len(self.dataframe)}')
 
     def resume_dataset_state(self):
         self.serialize_dataset = False if hasattr(self, "original_parquet_files") else True
@@ -218,20 +217,20 @@ class RLHFDataset(Dataset):
         Note that we also return the raw_input_ids so that it can be combined with other chat template
         """
 
-        row_dict = self.dataframe.iloc[item].to_dict()
+        row_dict: dict = self.dataframe.iloc[item].to_dict()
+        processed_dict = self._preprocess_fn(row_dict)
+        row_dict.update(processed_dict)
 
         chat = row_dict.pop(self.prompt_key)
-        prompt_with_chat_template = row_dict.pop("prompt_with_chat_template")
-        raw_prompt = row_dict.pop("raw_prompt")
-        image_grid_thw = row_dict.pop("image_grid_thw")
-        input_ids, attention_mask = verl_F.tokenize_and_postprocess_data(
-            prompt=prompt_with_chat_template,
-            tokenizer=self.tokenizer,
-            max_length=self.max_prompt_length,
-            pad_token_id=self.tokenizer.pad_token_id,
-            left_pad=True,
-            truncation=self.truncation,
-        )
+        prompt_with_chat_template = row_dict.pop('prompt_with_chat_template')
+        raw_prompt = row_dict.pop('raw_prompt')
+        image_grid_thw = row_dict.pop('image_grid_thw')
+        input_ids, attention_mask = verl_F.tokenize_and_postprocess_data(prompt=prompt_with_chat_template,
+                                                                         tokenizer=self.tokenizer,
+                                                                         max_length=self.max_prompt_length,
+                                                                         pad_token_id=self.tokenizer.pad_token_id,
+                                                                         left_pad=True,
+                                                                         truncation=self.truncation)
 
         if self.image_key in row_dict:
             from verl.models.transformers.qwen2_vl import get_rope_index
