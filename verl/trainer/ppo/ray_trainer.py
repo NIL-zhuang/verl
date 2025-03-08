@@ -562,6 +562,7 @@ class RayPPOTrainer(object):
             filter_prompts=True,
             return_raw_chat=self.config.data.get("return_raw_chat", False),
             truncation="error",
+            filter_overlong_prompts=self.config.data.filter_overlong_prompts
         )
         # use sampler for better ckpt resume
         if self.config.data.shuffle:
@@ -590,6 +591,7 @@ class RayPPOTrainer(object):
             filter_prompts=True,
             return_raw_chat=self.config.data.get("return_raw_chat", False),
             truncation="error",
+            filter_overlong_prompts=self.config.data.filter_overlong_prompts,
         )
         self.val_dataloader = StatefulDataLoader(
             dataset=self.val_dataset,
