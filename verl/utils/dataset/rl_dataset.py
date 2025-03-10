@@ -14,11 +14,8 @@
 
 from omegaconf import ListConfig
 import os
-from io import BytesIO
 from typing import List, Union, Optional
 import copy
-import math
-import base64
 import pandas as pd
 from collections import defaultdict
 
@@ -133,6 +130,8 @@ class RLHFDataset(Dataset):
         # whether to store the dataset in state_dict()
         # default not store
         self.serialize_dataset = False
+
+        self.max_pixels = 1024 * 1024
         self._download()
         self._read_files_and_tokenize()
 
@@ -149,7 +148,9 @@ class RLHFDataset(Dataset):
         row_dict = dict()
         if self.image_key in sample:
             raw_prompt = prompt_with_chat_template.replace('<image>', '<|vision_start|><|image_pad|><|vision_end|>')
-            row_dict['multi_modal_data'] = {'image': [process_image(image) for image in sample[self.image_key]]}
+            row_dict["multi_modal_data"] = {
+                "image": [process_image(image, max_pixels=self.max_pixels) for image in sample[self.image_key]]
+            }
             image_inputs = self.processor.image_processor(row_dict['multi_modal_data']['image'], return_tensors='pt')
             image_grid_thw = image_inputs['image_grid_thw']
             row_dict['image_grid_thw'] = image_grid_thw
@@ -191,11 +192,12 @@ class RLHFDataset(Dataset):
         if self.filter_overlong_prompts:
             from tqdm.auto import tqdm
 
-            tqdm.pandas(desc='Filtering overlong prompts')
-            preprocessed = self.dataframe.progress_apply(lambda x: self._preprocess_fn(x), axis=1)
+            tqdm.pandas(desc="Filtering overlong prompts", mininterval=2.0)
             self.dataframe = self.dataframe[
-                preprocessed.apply(
-                    lambda doc: len(self.tokenizer.tokenize(doc['prompt_with_chat_template'])) <= self.max_prompt_length
+                self.dataframe.progress_apply(
+                    lambda x: len(self.tokenizer.tokenize(self._preprocess_fn(x)["prompt_with_chat_template"]))
+                    <= self.max_prompt_length,
+                    axis=1,
                 )
             ]
             print(f'filter dataset len: {len(self.dataframe)}')

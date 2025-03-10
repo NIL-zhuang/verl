@@ -34,6 +34,10 @@ def _default_compute_score(data_source, solution_str, ground_truth, extra_info=N
     elif data_source in ['hiyouga/geometry3k']:
         from . import geo3k
         res = geo3k.compute_score(solution_str, ground_truth)
+    elif data_source in ["AI4Math/MathVerse", "MathLLMs/MathVision", "AI4Math/MathVista", "lmms-lab/LLaVA-OneVision"]:
+        from . import llava_onevision
+
+        res = llava_onevision.compute_score(solution_str, ground_truth)
     else:
         raise NotImplementedError
 
@@ -54,13 +58,5 @@ class RewardFunctionWrapper:
         score_reward = self.compute_score(data_source, solution_str, ground_truth, extra_info)
         format_reward = self.format_score(data_source, solution_str, extra_info)
         reward_metric = {"reward/correctness": score_reward, "reward/format": format_reward}
-
-        # 只有答案正确才给格式奖励，否则不给
-        # if score_reward > 0:
-        #     score = score_reward + format_reward
-        # else:
-        #     score = score_reward
-
         score = score_reward + format_reward
-
         return score, reward_metric
