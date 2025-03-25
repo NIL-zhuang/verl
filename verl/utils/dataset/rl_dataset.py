@@ -116,9 +116,6 @@ class RLHFDataset(Dataset):
 
         self.prompt_key = prompt_key
         self.image_key = image_key
-        self.prompt_with_chat_template_key = "prompt_with_chat_template"
-        self.raw_prompt_key = "raw_prompt"
-        self.image_grid_thw_key = "image_grid_thw"
         self.max_prompt_length = max_prompt_length
         self.filter_prompts = filter_prompts
 
@@ -131,7 +128,7 @@ class RLHFDataset(Dataset):
         # default not store
         self.serialize_dataset = False
 
-        self.max_pixels = 1024 * 1024
+        self.max_pixels = 768 * 768
         self._download()
         self._read_files_and_tokenize()
 
@@ -188,10 +185,12 @@ class RLHFDataset(Dataset):
 
         prompt_with_chat_template = self.tokenizer.apply_chat_template(chat, add_generation_prompt=True, tokenize=False)
 
-        is_multi_modal = self.image_key in row_dict
+        is_multi_modal = self.image_key in row_dict and not pd.isna(row_dict[self.image_key])
         if is_multi_modal:  # expand image token
             raw_prompt = prompt_with_chat_template.replace("<image>", "<|vision_start|><|image_pad|><|vision_end|>")
-            row_dict["multi_modal_data"] = {"image": [process_image(image) for image in row_dict.pop(self.image_key)]}
+            row_dict["multi_modal_data"] = {
+                "image": [process_image(image, max_pixels=self.max_pixels) for image in row_dict.pop(self.image_key)]
+            }
             image_inputs = self.processor.image_processor(row_dict["multi_modal_data"]["image"], return_tensors="pt")
             image_grid_thw = image_inputs["image_grid_thw"]
             row_dict["multi_modal_inputs"] = {key: val for key, val in image_inputs.items()}
