@@ -31,8 +31,13 @@ def _default_compute_score(data_source, solution_str, ground_truth, extra_info=N
         # from . import math_verify
         # res = math_verify.compute_score(solution_str, ground_truth)
     elif data_source in [
-            'numina_aops_forum', 'numina_synthetic_math', 'numina_amc_aime', 'numina_synthetic_amc', 'numina_cn_k12',
-            'numina_olympiads'
+        "numina_aops_forum",
+        "numina_synthetic_math",
+        "numina_amc_aime",
+        "numina_synthetic_amc",
+        "numina_cn_k12",
+        "numina_olympiads",
+        "HuggingfaceH4/Math-500",
     ]:
         from . import prime_math
         res = prime_math.compute_score(solution_str, ground_truth)
