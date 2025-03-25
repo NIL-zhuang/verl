@@ -53,10 +53,18 @@ class RewardFunctionWrapper:
         if compute_score is None:
             self.compute_score = _default_compute_score
         self.format_score = format_reward.compute_score
+        self.compute_aha_moment = format_reward.compute_aha_moment
+        self.format_score_gamma = 0.1
 
     def __call__(self, data_source, solution_str, ground_truth, extra_info: dict = None):
         score_reward = self.compute_score(data_source, solution_str, ground_truth, extra_info)
         format_reward = self.format_score(data_source, solution_str, extra_info)
-        reward_metric = {"reward/correctness": score_reward, "reward/format": format_reward}
-        score = score_reward + format_reward
+        aha_count = self.compute_aha_moment(solution_str=solution_str)
+
+        reward_metric = {
+            "reward/correctness": score_reward,
+            "reward/format": format_reward,
+            "reward/aha_count": aha_count,
+        }
+        score = score_reward + self.format_score_gamma * format_reward
         return score, reward_metric

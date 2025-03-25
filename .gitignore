@@ -1,4 +1,5 @@
 tasks/
+ray_hope/
 
 **/*.pt
 **/checkpoints

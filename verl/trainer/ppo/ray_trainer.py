@@ -597,7 +597,8 @@ class RayPPOTrainer(object):
             dataset=self.val_dataset,
             # Validation datasets are sent to inference engines as a whole batch,
             # which will schedule the memory themselves.
-            batch_size=len(self.val_dataset),
+            # batch_size=len(self.val_dataset),
+            batch_size=1024,  # 虽然看起来 vllm 会自己控制内存，但还是遇到了 OOM，再试试
             num_workers=8,
             shuffle=False,
             drop_last=False,
@@ -605,9 +606,7 @@ class RayPPOTrainer(object):
         )
 
         assert len(self.train_dataloader) >= 1
-        assert len(self.val_dataloader) == 1, (
-            "Validation dataloader must have a single batch, which inference engines will schedule the memory themselves."
-        )
+        # assert len(self.val_dataloader) == 1, ( "Validation dataloader must have a single batch, which inference engines will schedule the memory themselves.")
 
         print(f"Size of train dataloader: {len(self.train_dataloader)}")
 
